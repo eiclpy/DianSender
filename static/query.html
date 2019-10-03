@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <!-- import CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+</head>
+
+<body>
+    <div id="app">
+        <el-card class="box-card">
+            <div>
+                <span>发送进度</span>
+            </div>
+            <el-progress :text-inside="true" :stroke-width="26" :percentage="percentage" :status="status"></el-progress>
+            <div v-show="status=='success'">发送完成</div>
+        </el-card>
+    </div>
+</body>
+<!-- import Vue before Element -->
+<script src="https://unpkg.com/vue/dist/vue.js"></script>
+<!-- import JavaScript -->
+<script src="https://unpkg.com/element-ui/lib/index.js"></script>
+<script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+<script>
+    var app1 = new Vue({
+        el: '#app',
+        data: function () {
+            return {
+                percentage: 0,
+                status: 'warning',
+            }
+        },
+        methods: {
+            update() {
+                if (app1.status != 'success')
+                    axios.get('/queryPercent')
+                        .then(function (response) {
+                            console.log(response);
+                            app1.percentage = response.data;
+                            if (app1.percentage == 100) {
+                                app1.status = 'success';
+                            }
+                        })
+                        .catch(function (error) {
+                            console.log(error);
+                        });
+            }
+        },
+        mounted() {
+            this.timer = setInterval(this.update, 5000);
+        },
+        beforeDestroy() {
+            clearInterval(this.timer);
+        }
+    })
+</script>
+
+</html>

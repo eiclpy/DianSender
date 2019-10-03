@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <!-- import CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+</head>
+
+<body>
+    <div id="app">
+        <el-steps :active="activeIdx" finish-status="success">
+            <el-step title="1. 设置邮件内容"></el-step>
+            <el-step title="2. 选择收件人"></el-step>
+            <el-step title="3. 设置发件人"></el-step>
+            <el-step title="4. 确认"></el-step>
+        </el-steps>
+
+        <el-form :model="settingForm" :rules="rules" ref="settingForm" label-width="100px" class="emailSender">
+
+            <el-row class="activeIdx0" v-show="activeIdx === 0">
+                <el-form-item label="发件昵称" prop="nickname">
+                    <el-select v-model="settingForm.nickname" filterable allow-create default-first-option
+                        placeholder="请输入或选择发件昵称">
+                        <el-option v-for="item in nicknames" :key="item.value" :label="item.label" :value="item.value">
+                        </el-option>
+                    </el-select>
+                </el-form-item>
+                <el-form-item label="邮件标题" prop="subject">
+                    <el-input v-model="settingForm.subject"></el-input>
+                </el-form-item>
+                <el-form-item label="邮件正文" prop="context">
+                    <el-input type="textarea" :autosize="{ minRows: 4}" v-model="settingForm.context"></el-input>
+                </el-form-item>
+                <el-form-item label="附件">
+                    <el-upload action="" :on-change="handleFile" :on-remove="removeFile" :file-list="fileList"
+                        :auto-upload="false">
+                        <el-button size="small" type="primary">点击上传</el-button>
+                    </el-upload>
+                </el-form-item>
+            </el-row>
+
+            <el-row class="activeIdx1" v-show="activeIdx === 1">
+                <el-form-item label="邮件列表">
+                    <el-upload action="" :on-change="handleExcel" :on-remove="clearEmail" :file-list="excelList"
+                        :auto-upload="false">
+                        <el-button size="small" type="primary">添加邮件列表</el-button>
+                        <div slot="tip" class="el-upload__tip">上传列表后请勾选要发送的Sheet</div>
+                    </el-upload>
+
+                </el-form-item>
+
+                <el-tree :data="excelTree" ref="etree" show-checkbox default-expand-all node-key="id"
+                    :props="defaultProps">
+                </el-tree>
+
+            </el-row>
+
+            <el-row class="activeIdx2" v-show="activeIdx === 2">
+                <el-form-item label="发件邮箱" prop="user">
+                    <el-select v-model="settingForm.user" filterable allow-create default-first-option
+                        placeholder="请输入或选择发件邮箱">
+                        <el-option v-for="item in users" :key="item.value" :label="item.label" :value="item.value">
+                        </el-option>
+                    </el-select>
+                </el-form-item>
+                <el-form-item label="密码" prop="passwd">
+                    <el-input placeholder="请输入密码" v-model="settingForm.passwd" show-password></el-input>
+                </el-form-item>
+                <el-form-item label="调试模式">
+                    <el-switch style="display: block" v-model="settingForm.debugMode" active-color="#13ce66"
+                        inactive-color="#ff4949" active-text="开" inactive-text="关">
+                    </el-switch>
+                </el-form-item>
+
+
+            </el-row>
+
+            <el-row class="activeIdx3" v-show="activeIdx === 3">
+                <el-card class="box-card">
+                    <el-row><b>调试模式：</b> {{ settingForm.debugMode?'开':'关' }}</el-row>
+                    <el-divider></el-divider>
+                    <el-row><b>发件邮箱：</b> {{ settingForm.user }}</el-row>
+                    <el-divider></el-divider>
+                    <el-row><b>发件昵称：</b> {{ settingForm.nickname }}</el-row>
+                    <el-divider></el-divider>
+                    <el-row><b>收件人数：</b> {{ settingForm.emails.length }} <span
+                            v-show="dupNum != 0">(已排除重复的{{ dupNum }}个邮箱)
+                        </span>
+                    </el-row>
+                    <el-divider></el-divider>
+                    <el-row><b>邮件标题：</b> {{ settingForm.subject }}</el-row>
+                    <el-divider></el-divider>
+                    <el-row><b>附件：</b> {{ Object.keys(settingForm.attachments).length }} 个</el-row>
+                    <div v-for="(item,name) in settingForm.attachments">
+                        {{ name }}
+                    </div>
+                    <el-divider></el-divider>
+                    <el-row><b>邮件正文：</b> <br />
+                        <pre>{{ settingForm.context }}</pre>
+                    </el-row>
+
+                </el-card>
+
+            </el-row>
+
+        </el-form>
+
+        <el-button style="margin-top: 12px;" @click="pre" v-show="activeIdx > 0">上一步</el-button>
+        <el-button style="margin-top: 12px;" @click="next" v-show="activeIdx < 3">下一步</el-button>
+        <el-button style="margin-top: 12px;" @click="submit" v-show="activeIdx == 3">Submit</el-button>
+
+    </div>
+</body>
+<!-- import Vue before Element -->
+<script src="https://unpkg.com/vue/dist/vue.js"></script>
+<!-- import JavaScript -->
+<script src="https://unpkg.com/element-ui/lib/index.js"></script>
+<!-- add the shim first -->
+<script src="https://cdn.jsdelivr.net/npm/es5-shim@4.5.1/es5-shim.min.js"></script>
+<!-- after the shim is referenced, add the library -->
+<script src="https://unpkg.com/xlsx@0.15.1/xlsx.mini.js"></script>
+<script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+<script>
+    function validateEmail(email) {
+        var re = /^(([^<>()[\]\\.,;:\s@\"]+(\.[^<>()[\]\\.,;:\s@\"]+)*)|(\".+\"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+        return re.test(email);
+    }
+    var app1 = new Vue({
+        el: '#app',
+        data: function () {
+            return {
+                activeIdx: 0,
+                settingForm: {
+                    nickname: '',
+                    subject: '',
+                    context: '',
+                    attachments: {},
+                    emails: [],
+                    user: '',
+                    passwd: '',
+                    debugMode: true
+                },
+                fileList: [],
+                excelList: [],
+                rules: {
+                    nickname: [
+                        { required: true, message: '请选择或输入发件昵称', trigger: 'change' },
+                    ],
+                    subject: [
+                        { required: true, message: '请输入邮件标题', trigger: 'change' },
+                    ],
+                    context: [
+                        { required: true, message: '请输入邮件正文', trigger: 'change' },
+                    ],
+                    user: [
+                        { required: true, message: '请选择或输入发件邮箱', trigger: 'change' },
+                    ],
+                    passwd: [
+                        { required: true, message: '请输入发件邮箱密码', trigger: 'change' },
+                    ],
+                },
+                nicknames: [{
+                    value: 'Dian Group',
+                    label: 'Dian Group'
+                }, {
+                    value: 'Newsletter Dian',
+                    label: 'Newsletter Dian'
+                },
+                ],
+                users: [{
+                    value: 'dian@hust.edu.cn',
+                    label: 'dian@hust.edu.cn'
+                },
+                ],
+                excelFiles: {},
+                excelTree: [],
+                defaultProps: {
+                    children: 'children',
+                    label: 'label'
+                },
+                keyMap: {},
+                duplicate: new Set(),
+                dupNum: 0,
+            }
+        },
+
+        methods: {
+            handleFile(file, fileList) {
+                // console.log(file);
+                // console.log(fileList);
+                for (var each in fileList.slice(0, -1)) {
+                    // console.log(fileList[each]);
+                    if (file.name == fileList[each].name) {
+                        console.log('error');
+                        this.fileList = fileList.slice(0, -1);
+                        return;
+                    }
+                }
+                this.fileList = fileList;
+
+                console.log('file name ', file.name);
+                var reader = new FileReader();
+                reader.readAsDataURL(file.raw);
+                reader.onload = function (e) {
+                    console.log('loading ', file.name)
+                    app1.settingForm.attachments[file.name] = this.result;
+                }
+            },
+            removeFile(file, fileList) {
+                console.log(file)
+                // console.log(fileList)
+                delete this.settingForm.attachments[file.name];
+            },
+            handleExcel(file, fileList) {
+                // console.log(file)
+                for (var each in fileList.slice(0, -1)) {
+                    if (file.name == fileList[each].name) {
+                        console.log('error');
+                        this.excelList = fileList.slice(0, -1);
+                        return;
+                    }
+                }
+                this.excelList = fileList;
+                var reader = new FileReader();
+                reader.onload = function (e) {
+                    var data = new Uint8Array(e.target.result);
+                    workbook = XLSX.read(data, { type: 'array' });
+                    var wbResult = {};
+                    workbook.SheetNames.forEach(function (sheetName) {
+                        var roa = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1 });
+                        // console.log(roa);
+                        var emailIdx = -1;
+                        for (var each in roa[0]) {
+                            try {
+                                if (roa[0][each].toLowerCase().indexOf('e-mail') != -1 || roa[0][each].toLowerCase().indexOf('email') != -1 || roa[0][each].indexOf('邮箱') != -1) {
+                                    emailIdx = each;
+                                    break;
+                                }
+                            } catch (error) {
+                                console.log(error);
+                            }
+                        }
+                        if (emailIdx == -1) {
+                            console.log(sheetName, 'no email');
+                            return;
+                        }
+                        // console.log('emailIdx', emailIdx);
+                        roa = roa.slice(1);
+                        var emails = [];
+                        for (var each in roa) {
+                            var t = roa[each][emailIdx];
+                            if (typeof t != "undefined" && validateEmail(t)) {
+                                emails.push(t);
+                            }
+                        }
+                        if (emails.length > 0)
+                            wbResult[sheetName] = emails;
+                    });
+                    // console.log(file.name, wbResult);
+                    app1.excelFiles[file.name.toString()] = wbResult;
+                    app1.updateTree();
+                };
+                reader.readAsArrayBuffer(file.raw);
+            },
+            clearEmail(file, fileList) {
+                // console.log(file)
+                // console.log(fileList)
+                delete this.excelFiles[file.name];
+                this.updateTree();
+            },
+            updateTree() {
+                this.excelTree = [];
+                this.keyMap = {};
+                var treeIdx = 0;
+                var subIndex = Object.keys(this.excelFiles).length;
+                for (var each in this.excelFiles) {
+                    var wb = {};
+                    // console.log(each);
+                    wb.id = ++treeIdx;
+                    wb.label = each;
+                    wb.children = [];
+                    for (var ws in this.excelFiles[each]) {
+                        // console.log(ws);
+                        wb.children.push({
+                            id: ++subIndex,
+                            label: ws + "\t" + this.excelFiles[each][ws].length.toString(),
+                        });
+                        this.keyMap[subIndex] = this.excelFiles[each][ws];
+                    }
+                    this.excelTree.push(wb);
+                }
+                // console.log(this.excelTree);
+            },
+            pre() {
+                this.activeIdx--;
+            },
+            next() {
+                this.activeIdx++;
+                if (this.activeIdx == 3) {
+                    this.beforeSubmit();
+                }
+            },
+            beforeSubmit() {
+                var minIdx = Object.keys(this.excelFiles).length;
+                var checked = this.$refs.etree.getCheckedKeys().filter(function (x) { return x > minIdx });
+                // console.log(checked);
+                this.settingForm.emails = [];
+
+                var emails = [];
+                var singles = new Set();
+                this.duplicate = new Set();
+                // console.log(this.settingForm.emails.length);
+                for (var each in checked) {
+                    emails = emails.concat(this.keyMap[checked[each]]);
+                    // console.log(this.keyMap[checked[each]].length);
+                }
+                for (var i in emails) {
+                    if (!singles.has(emails[i])) {
+                        singles.add(emails[i]);
+                        this.settingForm.emails.push(emails[i]);
+                    } else {
+                        this.duplicate.add(i);
+                    }
+                }
+                this.dupNum = emails.length - this.settingForm.emails.length;
+
+            },
+            submit() {
+                if (this.settingForm.nickname == '') {
+                    this.$message.error('发信昵称不能为空');
+                    this.activeIdx = 0;
+                    return;
+                }
+                if (this.settingForm.subject == '') {
+                    this.$message.error('邮件主题不能为空');
+                    this.activeIdx = 0;
+                    return;
+                }
+                if (this.settingForm.context == '') {
+                    this.$message.error('邮件正文不能为空');
+                    this.activeIdx = 0;
+                    return;
+                }
+                if (this.settingForm.emails.length == 0) {
+                    this.$message.error('邮件列表不能为空');
+                    this.activeIdx = 1;
+                    return;
+                }
+                if (this.settingForm.user == '') {
+                    this.$message.error('发件邮箱不能为空');
+                    this.activeIdx = 2;
+                    return;
+                }
+                if (this.settingForm.passwd == '') {
+                    this.$message.error('密码不能为空');
+                    this.activeIdx = 2;
+                    return;
+                }
+                axios.post('/upload', this.settingForm)
+                    .then(function (response) {
+                        console.log(response);
+                        if (response.data == 'ok') {
+                            window.location = "/query"
+                        }else{
+                            app1.$message.error('上一次发送未完成');
+                        }
+                    })
+                    .catch(function (error) {
+                        console.log(error);
+                    });
+            },
+        }
+    })
+</script>
+
+</html>
