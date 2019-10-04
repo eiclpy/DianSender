@@ -2,12 +2,14 @@ import json
 import os
 import threading
 import time
+import logging
 
 from flask import Flask, jsonify, redirect, render_template, request, url_for
 from flask_httpauth import HTTPBasicAuth
+from gevent.pywsgi import WSGIServer
 
 from server import Server
-from config import username, password, listen, port
+from config import setting
 
 app = Flask(__name__)
 auth = HTTPBasicAuth()
@@ -26,8 +28,8 @@ def send(path):
 
 @auth.get_password
 def get_password(username):
-    if username == username:
-        return password
+    if username == setting['username']:
+        return setting['password']
     return None
 
 
@@ -70,4 +72,22 @@ def queryPercent():
 if not os.path.exists('jsons'):
     os.makedirs('jsons')
 
-app.run(host=listen, port=port)
+log = logging.getLogger('log')
+errorlog = logging.getLogger('errorlog')
+
+log.setLevel(logging.INFO)
+errorlog.setLevel(logging.INFO)
+
+loghandler = logging.FileHandler(filename="log.log")
+errorloghandler = logging.FileHandler(filename="errorlog.log")
+formatter = logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s")
+
+loghandler.setFormatter(formatter)
+errorloghandler.setFormatter(formatter)
+
+log.addHandler(loghandler)
+errorlog.addHandler(errorloghandler)
+
+http_server = WSGIServer((setting['listen'], setting['port']),
+                         app, log=log, error_log=errorlog)
+http_server.serve_forever()

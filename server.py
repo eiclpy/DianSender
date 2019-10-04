@@ -9,16 +9,7 @@ from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import COMMASPACE, formataddr
-
-hostPortMap = {
-    'hust.edu.cn': ['mail.hust.edu.cn', 25],
-}
-
-mails_per_send = 50
-mails_per_login = 300
-interval_between_login = 2
-reset_per_n_login = 4
-reset_interval = 5
+from config import getHostSetting
 
 
 def make_mail(setting):
@@ -37,11 +28,6 @@ def make_mail(setting):
     return data
 
 
-def getHostPort(addr):
-    host = addr.split('@')[-1]
-    return hostPortMap[host]
-
-
 class Server:
     def __init__(self, settingfile):
         self.settingfilebase = settingfile.replace('.json', '')
@@ -50,8 +36,8 @@ class Server:
         self.flog = open(self.settingfilebase+'_log.log', 'w')
         self.username = self.setting['user']
         self.password = self.setting['passwd']
-        self.host, self.port = getHostPort(self.username)
         self.debug = self.setting['debugMode']
+        self.hostSetting = getHostSetting(self.username)
 
         self.fail_send = []
         self.all_send = []
@@ -86,7 +72,7 @@ class Server:
             self.print('Login successful (DEBUG MODE)')
             return True
         try:
-            self.server = smtplib.SMTP(self.host, self.port)
+            self.server = smtplib.SMTP(self.hostSetting['host'], self.hostSetting['port'])
         except:
             self.print('无法连接服务器，请检查网络是否连通')
             return False
@@ -178,29 +164,29 @@ class Server:
         counter = 0
         login_cnt = 1
         while last > 0:
-            if last >= mails_per_send:
+            if last >= self.hostSetting['mails_per_send']:
                 self._send_mails(
-                    reciver[send_index:send_index+mails_per_send], copy.deepcopy(msg))
-                send_index += mails_per_send
-                counter += mails_per_send
-                last -= mails_per_send
+                    reciver[send_index:send_index+self.hostSetting['mails_per_send']], copy.deepcopy(msg))
+                send_index += self.hostSetting['mails_per_send']
+                counter += self.hostSetting['mails_per_send']
+                last -= self.hostSetting['mails_per_send']
             elif last > 0:
                 self._send_mails(reciver[send_index:], copy.deepcopy(msg))
                 send_index += last
                 counter += last
                 last = 0
 
-            if last > 0 and counter+mails_per_send > mails_per_login:
+            if last > 0 and counter+self.hostSetting['mails_per_send'] > self.hostSetting['mails_per_login']:
                 self.print('Relogin')
                 self.logout()
-                if last > 0 and login_cnt > reset_per_n_login:
+                if last > 0 and login_cnt > self.hostSetting['reset_per_n_login']:
                     login_cnt = 0
                     self.print('Interval')
                     if not self.debug:
-                        time.sleep(reset_interval)
+                        time.sleep(self.hostSetting['reset_interval'])
                 else:
                     if not self.debug:
-                        time.sleep(interval_between_login)
+                        time.sleep(self.hostSetting['interval_between_login'])
                 self.login()
                 counter = 0
                 login_cnt += 1
